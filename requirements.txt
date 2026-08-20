@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+twilio==9.3.7
+anthropic==0.39.0
+openai-whisper==20231117
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+pydantic==2.9.2
+python-multipart==0.0.12
+requests==2.32.3
+websockets==13.1
+jinja2==3.1.4
+audioop-lts==0.2.2; python_version >= "3.13"

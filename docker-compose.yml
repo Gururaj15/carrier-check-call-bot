@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: ccbot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ccbot
+      POSTGRES_PASSWORD: ccbot_pw
+      POSTGRES_DB: checkcallbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - ccbot_pgdata:/var/lib/postgresql/data
+
+volumes:
+  ccbot_pgdata:
