@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vooma · Check-Call Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #0A0E17;
+    --bg-surface: #11172400;
+    --bg-card: #131A28;
+    --bg-card-raised: #1B2434;
+    --border-hairline: #232E44;
+    --border-hairline-soft: #1A2333;
+    --text-primary: #EEF2F9;
+    --text-secondary: #8B98B4;
+    --text-tertiary: #576078;
+    --accent-amber: #FFB224;
+    --accent-amber-dim: #4A3A18;
+    --accent-green: #3ED598;
+    --accent-green-dim: #163429;
+    --accent-red: #FF6B5E;
+    --accent-red-dim: #3A1F1D;
+    --accent-gray: #6B7690;
+    --font-display: 'Manrope', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { color-scheme: dark; }
+
+  body {
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(255,178,36,0.06), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 0%, rgba(62,213,152,0.05), transparent),
+      var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  a { color: inherit; }
+
+  /* ---------- Topbar ---------- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 40px;
+    background: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-hairline-soft);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand-mark {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  .brand-mark span { color: var(--accent-amber); }
+
+  .brand-sub {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    padding-left: 14px;
+    border-left: 1px solid var(--border-hairline);
+  }
+
+  .live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-green);
+    letter-spacing: 0.04em;
+  }
+
+  .pulse-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+  }
+
+  .pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes ping {
+    0%   { transform: scale(1);   opacity: 0.7; }
+    75%  { transform: scale(2.8); opacity: 0; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+
+  /* ---------- Lane divider (signature element) ---------- */
+  .lane-divider {
+    height: 40px;
+    margin: 0 40px;
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--accent-amber) 0px,
+      var(--accent-amber) 22px,
+      transparent 22px,
+      transparent 44px
+    );
+    background-size: 44px 3px;
+    background-repeat: repeat-x;
+    background-position: 0 center;
+    opacity: 0.22;
+    animation: drive 1.6s linear infinite;
+  }
+
+  @keyframes drive {
+    from { background-position: 0 center; }
+    to   { background-position: -44px center; }
+  }
+
+  /* ---------- Layout ---------- */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 40px; }
+
+  .page-head {
+    padding: 44px 0 8px;
+  }
+
+  .page-head h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 30px;
+    letter-spacing: -0.02em;
+  }
+
+  .page-head p {
+    color: var(--text-secondary);
+    font-size: 14.5px;
+    margin-top: 6px;
+    max-width: 560px;
+  }
+
+  /* ---------- Stats strip ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-hairline);
+    border: 1px solid var(--border-hairline);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 28px 0;
+  }
+
+  .stat {
+    background: var(--bg-card);
+    padding: 22px 24px;
+    opacity: 0;
+    animation: rise 0.5s ease forwards;
+  }
+
+  .stat:nth-child(1) { animation-delay: 0.05s; }
+  .stat:nth-child(2) { animation-delay: 0.12s; }
+  .stat:nth-child(3) { animation-delay: 0.19s; }
+  .stat:nth-child(4) { animation-delay: 0.26s; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 26px;
+    color: var(--text-primary);
+  }
+
+  .stat-label {
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- Call feed ---------- */
+  .feed-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 36px 0 14px;
+  }
+
+  .feed-head h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .feed-head .hint {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .empty-state {
+    border: 1px dashed var(--border-hairline);
+    border-radius: 14px;
+    padding: 56px 32px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .empty-state code {
+    display: inline-block;
+    margin-top: 10px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--accent-amber);
+  }
+
+  .call-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: 14px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: rise 0.45s ease forwards;
+    transition: border-color 0.2s ease;
+  }
+
+  .call-card:hover { border-color: #2E3B57; }
+
+  .call-card.flash {
+    animation: rise 0.45s ease forwards, flash-in 1.4s ease;
+  }
+
+  @keyframes flash-in {
+    0%   { box-shadow: 0 0 0 1px var(--accent-amber), 0 0 24px rgba(255,178,36,0.25); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .status-rail {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+
+  .status-rail.in_progress { background: var(--accent-amber); }
+  .status-rail.completed,
+  .status-rail.completed_tms_write_failed { background: var(--accent-green); }
+  .status-rail.failed_agent_error,
+  .status-rail.incomplete_max_turns { background: var(--accent-red); }
+
+  .call-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    cursor: pointer;
+  }
+
+  .call-id {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    min-width: 190px;
+  }
+
+  .call-from {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 130px;
+  }
+
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    padding: 4px 9px;
+    border-radius: 100px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge.in_progress { background: var(--accent-amber-dim); color: var(--accent-amber); }
+  .badge.completed { background: var(--accent-green-dim); color: var(--accent-green); }
+  .badge.completed_tms_write_failed { background: var(--accent-amber-dim); color: var(--accent-amber); }
+  .badge.failed_agent_error,
+  .badge.incomplete_max_turns { background: var(--accent-red-dim); color: var(--accent-red); }
+
+  .call-meta-chips {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-card-raised);
+    border: 1px solid var(--border-hairline);
+    padding: 3px 9px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+
+  .chip b { color: var(--text-primary); font-weight: 500; }
+
+  .chip.exception { color: var(--accent-red); border-color: rgba(255,107,94,0.25); }
+
+  .call-time {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
+
+  .chevron {
+    color: var(--text-tertiary);
+    transition: transform 0.25s ease;
+    flex-shrink: 0;
+  }
+
+  .call-card.expanded .chevron { transform: rotate(90deg); }
+
+  .call-detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    border-top: 1px solid var(--border-hairline-soft);
+  }
+
+  .call-card.expanded .call-detail {
+    max-height: 600px;
+  }
+
+  .call-detail-inner {
+    padding: 18px 20px 20px;
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 24px;
+  }
+
+  @media (max-width: 720px) {
+    .call-detail-inner { grid-template-columns: 1fr; }
+    .call-row { flex-wrap: wrap; }
+  }
+
+  .transcript-log {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .transcript-log .turn { margin-bottom: 4px; }
+  .transcript-log .turn.carrier b { color: var(--accent-amber); }
+  .transcript-log .turn.agent b { color: var(--text-tertiary); }
+
+  .detail-section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+
+  .extraction-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .field-block {
+    background: var(--bg-card-raised);
+    border: 1px solid var(--border-hairline);
+    border-radius: 9px;
+    padding: 10px 12px;
+  }
+
+  .field-block .k {
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .field-block .v {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-top: 3px;
+  }
+
+  .tms-line {
+    margin-top: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-green);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tms-line.failed { color: var(--accent-red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">voo<span>ma</span></div>
+      <div class="brand-sub">check-call console</div>
+    </div>
+    <div class="live-indicator">
+      <span class="pulse-dot"></span>
+      LIVE
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="page-head">
+      <h1>Carrier check-call log</h1>
+      <p>Live feed of inbound check-calls, AI-extracted load status, and mock TMS write confirmations.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Total calls</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-completed">0</div>
+        <div class="stat-label">Completed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-progress">0</div>
+        <div class="stat-label">In progress</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-exceptions">0</div>
+        <div class="stat-label">Exceptions flagged</div>
+      </div>
+    </div>
+
+    <div class="lane-divider"></div>
+
+    <div class="feed-head">
+      <h2>Call feed</h2>
+      <span class="hint" id="refresh-hint">refreshing every 4s</span>
+    </div>
+
+    <div id="feed"></div>
+  </div>
+
+<script>
+const seenIds = new Set();
+let firstLoad = true;
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+  const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diffSec < 60) return diffSec + 's ago';
+  if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
+  if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
+  return Math.floor(diffSec / 86400) + 'd ago';
+}
+
+function statusLabel(status) {
+  const map = {
+    in_progress: 'In progress',
+    completed: 'Completed',
+    completed_tms_write_failed: 'Completed · TMS retry needed',
+    failed_agent_error: 'Agent error',
+    incomplete_max_turns: 'Incomplete',
+  };
+  return map[status] || status;
+}
+
+function renderTranscript(intentTrace) {
+  if (!intentTrace || !intentTrace.length) {
+    return '<div class="turn agent" style="color: var(--text-tertiary)">No transcript yet.</div>';
+  }
+  return intentTrace.map(turn => {
+    const isCarrier = turn.role === 'user';
+    const label = isCarrier ? 'Carrier' : 'Agent';
+    const cls = isCarrier ? 'carrier' : 'agent';
+    let text = turn.content;
+    if (typeof text === 'string' && text.startsWith('[extracted:')) {
+      return '';
+    }
+    return `<div class="turn ${cls}"><b>${label}:</b> ${esc(text)}</div>`;
+  }).join('');
+}
+
+function renderExtraction(ls) {
+  if (!ls) {
+    return '<div style="color: var(--text-tertiary); font-size: 12.5px;">No extraction yet — call still in progress.</div>';
+  }
+  const fields = [
+    ['Location', ls.current_location],
+    ['ETA', ls.eta],
+    ['Status', ls.status],
+    ['Exception', ls.exception_reason],
+  ];
+  const grid = fields.map(([k, v]) => `
+    <div class="field-block">
+      <div class="k">${k}</div>
+      <div class="v">${esc(v || '—')}</div>
+    </div>`).join('');
+
+  const tmsOk = ls.tms_write_status === 'success';
+  const tmsLine = `
+    <div class="tms-line ${tmsOk ? '' : 'failed'}">
+      ${tmsOk ? '✓' : '⚠'} TMS write ${tmsOk ? 'confirmed' : ls.tms_write_status}
+      ${ls.confirmation_id ? `· <span>${esc(ls.confirmation_id)}</span>` : ''}
+    </div>`;
+
+  return `<div class="extraction-grid">${grid}</div>${tmsLine}`;
+}
+
+function callCardHTML(c, isNew) {
+  const ls = c.load_status;
+  const chips = ls ? `
+    <span class="chip"><b>${esc(ls.current_location || '—')}</b></span>
+    <span class="chip">ETA <b>${esc(ls.eta || '—')}</b></span>
+    <span class="chip">${esc(ls.status || '—')}</span>
+    ${ls.exception_reason && ls.exception_reason !== 'none' ? `<span class="chip exception">${esc(ls.exception_reason)}</span>` : ''}
+  ` : `<span class="chip" style="color: var(--text-tertiary)">awaiting extraction…</span>`;
+
+  return `
+  <div class="call-card ${isNew ? 'flash' : ''}" data-id="${c.id}">
+    <div class="status-rail ${c.status}"></div>
+    <div class="call-row" onclick="this.parentElement.classList.toggle('expanded')">
+      <span class="call-id">${esc(c.twilio_call_sid).slice(0, 22)}</span>
+      <span class="call-from">${esc(c.from_number || 'unknown')}</span>
+      <span class="badge ${c.status}">${statusLabel(c.status)}</span>
+      <div class="call-meta-chips">${chips}</div>
+      <span class="call-time">${timeAgo(c.created_at)}</span>
+      <span class="chevron">›</span>
+    </div>
+    <div class="call-detail">
+      <div class="call-detail-inner">
+        <div>
+          <div class="detail-section-label">Transcript</div>
+          <div class="transcript-log">${renderTranscript(c.intent_trace)}</div>
+        </div>
+        <div>
+          <div class="detail-section-label">Extracted → TMS</div>
+          ${renderExtraction(ls)}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function refresh() {
+  let calls;
+  try {
+    const res = await fetch('/calls');
+    calls = await res.json();
+  } catch (e) {
+    document.getElementById('refresh-hint').textContent = 'connection lost — retrying…';
+    return;
+  }
+  document.getElementById('refresh-hint').textContent = 'refreshing every 4s';
+
+  const feed = document.getElementById('feed');
+
+  if (!calls.length) {
+    feed.innerHTML = `
+      <div class="empty-state">
+        No calls yet.<br>
+        Run a simulated check-call to see it appear here live:<br>
+        <code>python scripts/simulate_call.py</code>
+      </div>`;
+  } else {
+    const expandedIds = new Set(
+      [...document.querySelectorAll('.call-card.expanded')].map(el => el.dataset.id)
+    );
+    feed.innerHTML = calls.map(c => {
+      const isNew = firstLoad ? false : !seenIds.has(c.id);
+      return callCardHTML(c, isNew);
+    }).join('');
+
+    // restore expanded state after re-render
+    expandedIds.forEach(id => {
+      const el = feed.querySelector(`.call-card[data-id="${id}"]`);
+      if (el) el.classList.add('expanded');
+    });
+  }
+
+  calls.forEach(c => seenIds.add(c.id));
+  firstLoad = false;
+
+  // stats
+  const total = calls.length;
+  const completed = calls.filter(c => c.status.startsWith('completed')).length;
+  const inProgress = calls.filter(c => c.status === 'in_progress').length;
+  const exceptions = calls.filter(c => c.load_status && c.load_status.exception_reason && c.load_status.exception_reason !== 'none').length;
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-completed').textContent = completed;
+  document.getElementById('stat-progress').textContent = inProgress;
+  document.getElementById('stat-exceptions').textContent = exceptions;
+}
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+
+</body>
+</html>
