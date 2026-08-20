@@ -1,24 +1,35 @@
 # Carrier Check-Call Voice Bot
 
+![Demo](./demo.gif)
+
 A production-shaped voice agent that extracts load status from carrier
 check-calls and writes structured output to a mock TMS (McLeod/Turvo-style).
 
-Built as a technical deep-dive for a Forward Deployed Engineer application at Vooma.
+A technical deep-dive into building a production-shaped voice AI pipeline for logistics — from live call handling through structured TMS writes.
 
 ---
 
-## Status
+## Status: complete (Steps 1–6)
 
-- [x] **Step 1 — Infra:** FastAPI app, Postgres schema (`calls`, `load_status_records`), webhook logging
-- [x] **Step 2 — Speech input:** carrier speech arrives as text (see "Important note" below for why/how)
-- [x] **Step 3 — Claude dialog agent:** multi-turn extraction via tool use (location, ETA, status, exceptions)
-- [x] **Step 4 — TMS write integration:** structured JSON written to mock McLeod/Turvo endpoint + Postgres
-- [ ] **Step 5 — Hardening:** retries, error handling, structured logging
-- [ ] **Step 6 — Demo polish:** one-page dashboard, GitHub push, write-up
+- [x] **Infra:** FastAPI app, Postgres schema (`calls`, `load_status_records`), webhook logging
+- [x] **Speech input:** carrier speech arrives as text (see "Important note" below for why/how)
+- [x] **Claude dialog agent:** multi-turn extraction via tool use (location, ETA, status, exceptions)
+- [x] **TMS write integration:** structured JSON written to a mock McLeod/Turvo endpoint + Postgres
+- [x] **Hardening:** retry + backoff on transient Claude API errors, runaway-conversation guard,
+      TMS-write-failure isolation, global exception safety net
+- [x] **Demo polish:** live dispatch dashboard, GitHub repo, demo GIF, this README
 
 **The core hard part of this project — real-time AI extraction from a live
-conversation, written to a TMS — is built and working.** What's not fully
-live yet is explained honestly below.
+conversation, written to a TMS — is fully built, hardened, and demoable end
+to end.** What isn't a literal phone call is explained honestly below.
+
+---
+
+## Demo
+
+The GIF above shows: running `scripts/simulate_call.py`, typing a check-call
+update, and watching it land live on the dashboard — transcript, extracted
+fields, and mock TMS confirmation, all in real time.
 
 ---
 
@@ -45,20 +56,33 @@ tradeoff worth documenting rather than hiding:
    action URLs to continue a real multi-turn call. Same symptom, three
    different approaches: first webhook always fires, second one never does.
 
-**The fix:** `scripts/simulate_call.py` sends your FastAPI server the exact
-same POST request shape Twilio sends (`CallSid`, `From`, `To`,
+**The fix:** `scripts/simulate_call.py` sends the running FastAPI server the
+exact same POST request shape Twilio sends (`CallSid`, `From`, `To`,
 `SpeechResult`) — so instead of speaking into a phone, you type what the
 carrier would say. Everything downstream is 100% real and live: the real
 Claude API call, real multi-turn reasoning, a real Postgres write, a real
-mock TMS confirmation. The *only* simulated piece is the transport layer
-(typed text standing in for "phone call → Twilio speech recognition →
-text"). Your backend code has no idea which one it was — it just reads a
-`SpeechResult` field either way.
+mock TMS confirmation, reflected live on the real dashboard. The *only*
+simulated piece is the transport layer (typed text standing in for "phone
+call → Twilio speech recognition → text"). The backend code has no idea
+which one it was — it just reads a `SpeechResult` field either way.
 
 **If you have an upgraded Twilio account + an owned phone number, live
-calling works with zero code changes** — the `/incoming-call` and
-`/gather-response` webhook routes are the same ones a real Twilio phone
-number would hit. See "Optional: live phone call setup" near the bottom.
+calling works with zero code changes** — see "Optional: live phone call
+setup" near the bottom.
+
+---
+
+## A quick note on "Completed" vs. load status
+
+On the dashboard, a call marked **Completed** means *the agent finished the
+conversation and successfully wrote the extraction to the TMS* — it says
+nothing about whether the shipment itself is on time. A completed call can
+absolutely show `status: delayed` with an `exception_reason` like "stuck in
+traffic" — both are true at once, and both are shown as separate fields.
+The only call statuses that mean something went wrong with the *conversation
+itself* are `failed_agent_error` (Claude API exhausted its retries) and
+`incomplete_max_turns` (the conversation looped too long without ever
+pinning down all four fields).
 
 ---
 
@@ -73,29 +97,40 @@ Python · FastAPI · Twilio Voice (webhook contract) · Claude (Anthropic API, t
 ```
 carrier-check-call-bot/
 ├── app/
-│   ├── main.py                  # FastAPI entrypoint — wires up all the routes below
+│   ├── main.py                  # FastAPI entrypoint — wires up all routes,
+│   │                            # plus a global exception handler that keeps
+│   │                            # voice webhooks returning valid TwiML even
+│   │                            # on unexpected errors.
 │   ├── models/db.py              # Postgres schema: Call + LoadStatusRecord tables
+│   ├── templates/
+│   │   └── dashboard.html         # The live dispatch console UI (HTML/CSS/JS,
+│   │                            # polls /calls every 4s, no build step needed)
 │   ├── routes/
 │   │   ├── voice.py               # THE CORE FILE. Handles /incoming-call (greets
 │   │   │                          # the carrier) and /gather-response (runs each
 │   │   │                          # conversation turn through the dialog agent).
-│   │   │                          # This is what Twilio calls OR what the simulator calls.
+│   │   │                          # This is what Twilio calls OR what the
+│   │   │                          # simulator calls. Includes Step 5 hardening:
+│   │   │                          # max-turn guard, agent-error handling,
+│   │   │                          # TMS-write-failure isolation.
 │   │   ├── tms.py                  # Mock TMS write — takes extracted fields, saves
 │   │   │                          # them to Postgres, returns a fake McLeod
-│   │   │                          # confirmation ID. Also a real POST /tms/mcleod/status
-│   │   │                          # route if you want to write to it directly.
-│   │   ├── dashboard.py            # GET /calls — JSON list of logged calls (Step 6
-│   │   │                          # will turn this into a real HTML dashboard)
+│   │   │                          # confirmation ID. POST /tms/mcleod/status
+│   │   │                          # also works standalone.
+│   │   ├── dashboard.py            # GET /dashboard (HTML page) + GET /calls
+│   │   │                          # (enriched JSON, call + load_status joined —
+│   │   │                          # also what the dashboard polls)
 │   │   └── media_stream.py         # WebSocket handler for Twilio Media Streams.
-│   │                              # Built and working (tested directly, bypassing
-│   │                              # Twilio) but NOT reachable live on a trial
-│   │                              # account — see note above. Kept in the repo to
-│   │                              # show the production-path implementation.
+│   │                              # Built and verified working (tested directly,
+│   │                              # bypassing Twilio) but not reachable live on
+│   │                              # a trial account — see note above. Kept in
+│   │                              # the repo as the production-path implementation.
 │   └── services/
 │       ├── dialog_agent.py         # THE AI CORE. Calls Claude with a tool
-│       │                          # definition; Claude either asks a follow-up
-│       │                          # question or calls submit_load_status when
-│       │                          # it has everything it needs.
+│       │                          # definition and retry/backoff hardening;
+│       │                          # Claude either asks a follow-up question or
+│       │                          # calls submit_load_status when it has
+│       │                          # everything it needs.
 │       ├── stt.py                  # Local Whisper wrapper — loads the model once,
 │       │                          # transcribes audio. Used by media_stream.py
 │       │                          # (production path) — not exercised in the
@@ -107,15 +142,16 @@ carrier-check-call-bot/
 │   └── simulate_call.py            # RUN THIS TO DEMO THE PROJECT. Drives the real
 │                                  # backend with Twilio-shaped requests via typed
 │                                  # input instead of a phone call.
-├── docker-compose.yml               # Local Postgres
+├── demo.gif                         # Screen recording of the demo in action
+├── docker-compose.yml               # Local Postgres (credentials via .env, not hardcoded)
 ├── requirements.txt
 ├── .env.example
 └── README.md
 ```
 
-**tl;dr — the two files that matter most:** `app/routes/voice.py` (the
-conversation logic) and `app/services/dialog_agent.py` (the Claude
-extraction). Everything else is infrastructure supporting those two.
+**tl;dr — the three files that matter most:** `app/routes/voice.py` (the
+conversation logic), `app/services/dialog_agent.py` (the Claude extraction),
+and `app/templates/dashboard.html` (the live view of it all working).
 
 ---
 
@@ -149,6 +185,9 @@ copy .env.example .env       # Windows cmd
 Open `.env` and set at minimum:
 ```
 ANTHROPIC_API_KEY=sk-ant-...your real key...
+POSTGRES_USER=ccbot
+POSTGRES_PASSWORD=ccbot_pw
+POSTGRES_DB=checkcallbot
 DATABASE_URL=postgresql://ccbot:ccbot_pw@localhost:5432/checkcallbot
 ```
 (`PUBLIC_BASE_URL`, Twilio SID/token are only needed for the optional live-call path below.)
@@ -168,22 +207,32 @@ Visit http://localhost:8000/health — should return `{"status": "ok"}`
 
 ## Run the demo (recommended — this is the main way to test/show this project)
 
+**Terminal 1** — keep `uvicorn` running.
+
+**Terminal 2** — run a simulated call:
 ```bash
 python scripts/simulate_call.py
 ```
-
 Type a check-call update when prompted, e.g.:
 ```
 I'm about 50 miles from Dallas, ETA is 3pm, no delays
 ```
 
-Watch it greet you, extract the fields, and confirm. Then verify the write:
+**Browser** — open http://localhost:8000/dashboard and watch the call land
+live, with the transcript, extracted fields, and TMS confirmation.
+
+Try a version with a delay/exception too, e.g.:
+```
+I'm stuck in traffic near Memphis, running 2 hours late, ETA is 6pm
+```
+— the dashboard flags exceptions in red. Or leave out the ETA entirely and
+watch the agent ask a natural follow-up question — that's the multi-turn
+reasoning in action.
+
+Verify the raw DB write directly if you want:
 ```bash
 docker exec -it ccbot_postgres psql -U ccbot -d checkcallbot -c "SELECT * FROM load_status_records ORDER BY created_at DESC LIMIT 1;"
 ```
-
-Try a version with a delay/exception, or leave out the ETA and see the agent
-ask a natural follow-up question — that's the multi-turn reasoning in action.
 
 ---
 
@@ -197,8 +246,7 @@ and buy a real number, live calling works with **zero code changes** —
    → Voice Configuration → "A call comes in" → Webhook (POST) →
    `https://your-ngrok-url.ngrok-free.app/incoming-call`
 2. Start ngrok: `ngrok http 8000`, copy the forwarding URL into `.env` as
-   `PUBLIC_BASE_URL` (only used by the media-stream path, not required for
-   the Gather-based flow to function, but good practice to keep accurate).
+   `PUBLIC_BASE_URL`.
 3. Call your number. The `/incoming-call` → `/gather-response` loop runs
    exactly like the simulator does, except Twilio's real speech recognition
    fills `SpeechResult` instead of your typed input.
@@ -208,12 +256,11 @@ and buy a real number, live calling works with **zero code changes** —
 
 ---
 
-## Next steps (in progress)
+## Possible future work
 
-- **Step 5 — Hardening:** retry logic around the Claude call, structured
-  error logging, graceful handling of malformed/partial speech input.
-- **Step 6 — Demo polish:** turn `GET /calls` into a real one-page HTML
-  dashboard showing call log, transcript, extracted fields, and TMS
-  confirmation per call. Record a short demo video of `simulate_call.py`
-  in action. Push to GitHub with commit history. Write up the build as a
-  Medium post.
+- Real live-call validation on an upgraded Twilio account
+- Auth on the dashboard (currently open — fine for a local demo, not for prod)
+- Real McLeod/Turvo API integration in place of the mock
+- Outbound check-calls (agent calls the carrier proactively) instead of inbound-only
+- Multi-load support per call (currently assumes one load per check-call)
+- Structured eval set of synthetic check-call transcripts to regression-test the extraction prompt
